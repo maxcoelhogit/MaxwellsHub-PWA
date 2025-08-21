@@ -1,0 +1,15 @@
+{
+  "name": "MaxBot",
+  "short_name": "MaxBot",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#004488",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/4712/4712027.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

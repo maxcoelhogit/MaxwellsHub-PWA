@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MAXBOT - Assistente Virtual</title>
+
+  <!-- ✅ Ícone para fallback e PWA -->
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/4712/4712027.png" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#004488" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Assistente Virtual - Condomínio Monções</h1>
+    <div id="resposta" class="resposta"></div>
+
+    <form id="pergunta-form">
+      <input
+        type="text"
+        id="pergunta"
+        placeholder="Digite sua mensagem..."
+        autocomplete="off"
+        required
+      />
+      <button type="submit">Enviar</button>
+    </form>
+
+    <footer>
+      <div style="font-size: 0.85em; opacity: 0.8;">
+        Sou virtual e posso errar. Confirme com o síndico se for importante.
+      </div>
+      <div style="font-size: 0.75em; opacity: 0.65;">
+        Developed and maintained by Maxwell Coelho · All rights reserved · 2025
+      </div>
+    </footer>
+  </div>
+
+  <script src="script.js" defer></script>
+
+  <!-- ✅ Registro do Service Worker para PWA -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("service-worker.js")
+          .then((reg) => console.log("✅ Service Worker registrado!", reg.scope))
+          .catch((err) => console.error("❌ Falha ao registrar SW:", err));
+      });
+    }
+  </script>
+</body>
+</html>

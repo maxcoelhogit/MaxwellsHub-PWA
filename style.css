@@ -1,0 +1,110 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: sans-serif;
+  background-color: #f0f0f5;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  max-width: 600px;
+  margin: 0 auto;
+  background-color: white;
+  border-radius: 10px;
+  padding: 20px 20px 80px; /* espaço extra para input fixo */
+  box-shadow: 0px 0px 10px #ccc;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+h1 {
+  color: #004488;
+  text-align: left;
+  margin-bottom: 10px;
+}
+
+.resposta {
+  background-color: #eaffea;
+  padding: 10px;
+  border-radius: 5px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+#pergunta-form {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 600px;
+  margin: auto;
+  display: flex;
+  gap: 10px;
+  padding: 10px 20px;
+  background: white;
+  box-shadow: 0 -1px 5px rgba(0, 0, 0, 0.1);
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 10px;
+  font-size: 1rem;
+}
+
+button {
+  background-color: #004488;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #0066cc;
+}
+
+.mensagem {
+  margin-bottom: 10px;
+}
+
+.mensagem-usuario {
+  color: #004488;
+}
+
+.mensagem-bot {
+  color: #008800;
+  line-height: 1.4;
+}
+
+/* ✅ Links clicáveis nas respostas do MaxBot */
+.mensagem-bot a {
+  color: #0044cc;
+  text-decoration: underline;
+}
+
+.mensagem-bot a:hover {
+  color: #002288;
+}
+
+.mensagem-erro {
+  color: red;
+}
+
+footer {
+  font-size: 0.7rem;
+  color: #999;
+  text-align: center;
+  padding: 10px;
+}
