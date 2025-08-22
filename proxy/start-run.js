@@ -16,9 +16,9 @@ export default async function handler(req, res) {
   // Permite escolher assistente por ?bot=IMOVEIS, ?bot=CONDOVALE, etc.
   const bot = (req.query?.bot || "DEFAULT").toUpperCase().replace(/[^A-Z0-9_]/g, "");
   const assistantEnvKey = `ASSISTANT_ID_${bot}`;
-  const assistantId = process.env[assistantEnvKey] || process.env.ASSISTANT_ID_MAXWELLSHUB;
+  const assistantId = process.env[assistantEnvKey] || process.env.ASSISTANT_ID_DEFAULT;
   if (!assistantId) {
-    return res.status(500).json({ error: `Assistant ID não definido (checado: ${assistantEnvKey} e ASSISTANT_ID_MAXWELLSHUB)` });
+    return res.status(500).json({ error: `Assistant ID não definido (checado: ${assistantEnvKey} e ASSISTANT_ID_DEFAULT)` });
   }
 
   const headers = {
