@@ -4,7 +4,7 @@ const input = document.getElementById("pergunta");
 const respostaDiv = document.getElementById("resposta");
 let thread_id = null;
 
-// Se o front estiver no GitHub Pages, use URL absoluta da Vercel; caso contrário, use caminho relativo
+// Se o front estiver no GitHub Pages, use URL absoluta da Vercel; senão, caminho relativo
 const API_BASE = location.hostname.endsWith("github.io")
   ? "https://maxwells-hub-pwa.vercel.app"
   : "";
@@ -82,7 +82,7 @@ form.addEventListener("submit", async (e) => {
   respostaDiv.scrollTop = respostaDiv.scrollHeight;
 
   try {
-    // 1) Chamada à rota unificada (recomendada)
+    // Rota unificada do backend
     const resp = await fetch(withBot("/proxy/index"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -92,7 +92,6 @@ form.addEventListener("submit", async (e) => {
     console.log("Request URL:", resp.url, "Status:", resp.status);
     const data = await resp.json().catch(() => ({}));
 
-    // Remove indicador "digitando"
     if (digitando.parentNode) respostaDiv.removeChild(digitando);
 
     if (!resp.ok) {
@@ -101,23 +100,19 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    // Atualiza thread
     thread_id = data.thread_id || thread_id;
 
-    // 2) Se já veio resposta final, mostra e sai
     if (data.resposta) {
       adicionarMensagem("Lucas", data.resposta, "bot");
       return;
     }
 
-    // 3) Fluxo alternativo: se a API respondeu com run_id/status, faz polling em /proxy/check-run
     if (data.run_id) {
       const respostaFinal = await aguardarResposta(thread_id, data.run_id);
       adicionarMensagem("Lucas", respostaFinal, "bot");
       return;
     }
 
-    // Se chegou aqui, não veio resposta e nem run_id
     adicionarMensagem("Erro", "Não houve resposta do assistente.", "erro");
 
   } catch (erro) {
