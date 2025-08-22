@@ -1,4 +1,4 @@
-const CACHE_NAME = "maxbot-cache-v1";
+const CACHE_NAME = "maxwellshub-cache-v1";
 const urlsToCache = [
   "index.html",
   "style.css",
