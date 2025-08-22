@@ -6,7 +6,7 @@ let thread_id = null;
 // Saudação inicial
 window.onload = () => {
   adicionarMensagem(
-    "MaxBot",
+    "MaxwellsHub",
     transformarLinksEmCliqueAqui("👋 Olá! Sou o Lucas, assistende do MaxwellsHub. Estou aqui para te ajudar com dúvidas e muito mais. Digite sua mensagem abaixo e veja como posso ajudar. 😊"),
     "bot"
   );
@@ -38,7 +38,7 @@ form.addEventListener("submit", async (e) => {
     respostaDiv.removeChild(digitando);
 
     if (data.resposta) {
-      adicionarMensagem("MaxBot", transformarLinksEmCliqueAqui(data.resposta), "bot");
+      adicionarMensagem("Lucas", transformarLinksEmCliqueAqui(data.resposta), "bot");
     } else {
       adicionarMensagem("Erro", "Não houve resposta do assistente.", "erro");
     }
