@@ -1,14 +1,15 @@
+// ====== Config ======
 const form = document.getElementById("pergunta-form");
 const input = document.getElementById("pergunta");
 const respostaDiv = document.getElementById("resposta");
 let thread_id = null;
 
-// Detecta onde o front está hospedado
+// Se o front estiver no GitHub Pages, use URL absoluta da Vercel; caso contrário, use caminho relativo
 const API_BASE = location.hostname.endsWith("github.io")
-  ? "https://maxwells-hub-pwa.vercel.app" // backend na Vercel
-  : ""; // se o front também estiver na Vercel, caminhos relativos funcionam
+  ? "https://maxwells-hub-pwa.vercel.app"
+  : "";
 
-// Qual bot usar (pega da URL ?bot=LUCAS ou cai no LUCAS)
+// Bot por query (?bot=LUCAS) ou padrão LUCAS
 const BOT = (new URLSearchParams(location.search).get("bot") || "LUCAS")
   .toUpperCase()
   .replace(/[^A-Z0-9_]/g, "");
@@ -16,15 +17,56 @@ const BOT = (new URLSearchParams(location.search).get("bot") || "LUCAS")
 const withBot = (path) =>
   `${API_BASE}${path}${path.includes("?") ? "&" : "?"}bot=${encodeURIComponent(BOT)}`;
 
-// Saudação inicial
+// ====== UI Helpers ======
+function adicionarMensagem(remetente, mensagem, tipo) {
+  const div = document.createElement("div");
+  div.classList.add("mensagem");
+
+  if (tipo === "user") {
+    // Segurança: não renderizar HTML vindo do usuário
+    div.classList.add("mensagem-usuario");
+    div.innerHTML = `<strong>${remetente}:</strong> `;
+    const span = document.createElement("span");
+    span.textContent = mensagem;
+    div.appendChild(span);
+  } else if (tipo === "bot") {
+    div.classList.add("mensagem-bot");
+    div.innerHTML = `<strong>${remetente}:</strong> ${transformarLinksEmCliqueAqui(mensagem)}`;
+  } else {
+    div.classList.add("mensagem-erro");
+    div.innerHTML = `<strong>${remetente}:</strong> ${transformarLinksEmCliqueAqui(mensagem)}`;
+  }
+
+  respostaDiv.appendChild(div);
+  respostaDiv.scrollTop = respostaDiv.scrollHeight;
+}
+
+function transformarLinksEmCliqueAqui(texto) {
+  // Corrige escapes do Markdown
+  texto = texto.replace(/\\([\[\]\(\)])/g, "$1");
+  // [Texto](https://...) → link
+  texto = texto.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, url) =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${t}</a>`
+  );
+  // URLs soltas → "Clique aqui"
+  texto = texto.replace(/(?<!href=")(https?:\/\/[^\s]+)/g, (url) =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">Clique aqui</a>`
+  );
+  return texto.replace(/\n/g, "<br>");
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ====== Saudação inicial ======
 window.onload = () => {
   adicionarMensagem(
     "MaxwellsHub",
-    transformarLinksEmCliqueAqui("👋 Olá! Sou o Lucas, assistende do MaxwellsHub. Estou aqui para te ajudar com dúvidas e muito mais. Digite sua mensagem abaixo e veja como posso ajudar. 😊"),
+    "👋 Olá! Sou o Lucas, assistente do MaxwellsHub. Estou aqui para te ajudar com dúvidas e muito mais. Digite sua mensagem abaixo e veja como posso ajudar. 😊",
     "bot"
   );
 };
 
+// ====== Envio da pergunta ======
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const pergunta = input.value.trim();
@@ -40,19 +82,18 @@ form.addEventListener("submit", async (e) => {
   respostaDiv.scrollTop = respostaDiv.scrollHeight;
 
   try {
-    // 🔧 Chame sua função serverless unificada
-    // Se o seu backend usa start-run/check-run separados, troque para '/proxy/start-run' e depois faça o polling em '/proxy/check-run'
+    // 1) Chamada à rota unificada (recomendada)
     const resp = await fetch(withBot("/proxy/index"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mensagem: pergunta, thread_id })
     });
 
-    // Debug útil no console
     console.log("Request URL:", resp.url, "Status:", resp.status);
-
     const data = await resp.json().catch(() => ({}));
-    respostaDiv.removeChild(digitando);
+
+    // Remove indicador "digitando"
+    if (digitando.parentNode) respostaDiv.removeChild(digitando);
 
     if (!resp.ok) {
       console.error("Erro backend:", data);
@@ -60,51 +101,56 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
+    // Atualiza thread
     thread_id = data.thread_id || thread_id;
 
+    // 2) Se já veio resposta final, mostra e sai
     if (data.resposta) {
-      adicionarMensagem("Lucas", transformarLinksEmCliqueAqui(data.resposta), "bot");
-    } else if (data.status && data.status !== "completed") {
-      adicionarMensagem("Lucas", `Status: ${data.status}. Tente novamente em instantes.`, "bot");
-    } else {
-      adicionarMensagem("Erro", "Não houve resposta do assistente.", "erro");
+      adicionarMensagem("Lucas", data.resposta, "bot");
+      return;
     }
+
+    // 3) Fluxo alternativo: se a API respondeu com run_id/status, faz polling em /proxy/check-run
+    if (data.run_id) {
+      const respostaFinal = await aguardarResposta(thread_id, data.run_id);
+      adicionarMensagem("Lucas", respostaFinal, "bot");
+      return;
+    }
+
+    // Se chegou aqui, não veio resposta e nem run_id
+    adicionarMensagem("Erro", "Não houve resposta do assistente.", "erro");
+
   } catch (erro) {
-    respostaDiv.removeChild(digitando);
+    if (digitando.parentNode) respostaDiv.removeChild(digitando);
     console.error("Erro ao enviar pergunta:", erro);
     adicionarMensagem("Erro", "Erro ao se conectar ao servidor.", "erro");
   }
 });
 
-function adicionarMensagem(remetente, mensagem, tipo) {
-  const div = document.createElement("div");
-  div.classList.add("mensagem");
+// ====== Polling /proxy/check-run (caso necessário) ======
+async function aguardarResposta(threadId, runId, maxTentativas = 20) {
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    await sleep(1500);
 
-  if (tipo === "user") {
-    div.classList.add("mensagem-usuario");
-    div.innerHTML = `<strong>${remetente}:</strong> ${mensagem}`;
-  } else if (tipo === "bot") {
-    div.classList.add("mensagem-bot");
-    div.innerHTML = `<strong>${remetente}:</strong> ${mensagem}`;
-  } else {
-    div.classList.add("mensagem-erro");
-    div.innerHTML = `<strong>${remetente}:</strong> ${mensagem}`;
+    const r = await fetch(withBot("/proxy/check-run"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thread_id: threadId, run_id: runId })
+    });
+
+    const d = await r.json().catch(() => ({}));
+
+    if (!r.ok) {
+      console.error("Falha no check-run:", d);
+      throw new Error(d?.error || "Falha ao verificar status.");
+    }
+
+    if (d.status === "completed") {
+      return d.resposta || "Sem resposta.";
+    }
+    if (["failed", "expired", "cancelled"].includes(d.status)) {
+      throw new Error(`Execução ${d.status}.`);
+    }
   }
-
-  respostaDiv.appendChild(div);
-  respostaDiv.scrollTop = respostaDiv.scrollHeight;
-}
-
-function transformarLinksEmCliqueAqui(texto) {
-  // Corrige escape Markdown vindo do backend
-  texto = texto.replace(/\\([\[\]\(\)])/g, "$1");
-  // [Texto](https://...) → link clicável
-  texto = texto.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, url) =>
-    `<a href="${url}" target="_blank" rel="noopener noreferrer">${t}</a>`
-  );
-  // URLs soltas → "Clique aqui"
-  texto = texto.replace(/(?<!href=")(https?:\/\/[^\s]+)/g, (url) =>
-    `<a href="${url}" target="_blank" rel="noopener noreferrer">Clique aqui</a>`
-  );
-  return texto.replace(/\n/g, "<br>");
+  throw new Error("Tempo excedido aguardando resposta.");
 }
