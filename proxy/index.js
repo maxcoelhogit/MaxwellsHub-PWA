@@ -1,112 +1,90 @@
+// /proxy/index.js  (handler POST)
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Método não permitido" });
 
-  if (req.method !== "POST") {
-    console.log("Método não permitido:", req.method);
-    return res.status(405).json({ error: "Método não permitido" });
+  const { mensagem, thread_id } = req.body || {};
+  if (!mensagem) return res.status(400).json({ error: "Mensagem não fornecida" });
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY não configurada no ambiente" });
+
+  // Suporte a múltiplos assistentes via ?bot=IMOVEIS, ?bot=CONDOVALE, etc.
+  const bot = (req.query?.bot || "DEFAULT").toUpperCase().replace(/[^A-Z0-9_]/g, "");
+  const assistantEnvKey = `ASSISTANT_ID_${bot}`;
+  const assistantId = process.env[assistantEnvKey] || process.env.ASSISTANT_ID_MAXWELLSHUB;
+
+  if (!assistantId) {
+    return res.status(500).json({ error: `Assistant ID não definido (checado: ${assistantEnvKey} e ASSISTANT_ID_MAXWELLSHUB)` });
   }
 
-  const { mensagem, thread_id } = req.body;
-
-  if (!mensagem) {
-    console.log("Mensagem não fornecida");
-    return res.status(400).json({ error: "Mensagem não fornecida" });
-  }
+  const baseHeaders = {
+    "Authorization": `Bearer ${apiKey}`,
+    "OpenAI-Beta": "assistants=v2",
+    "Content-Type": "application/json",
+  };
 
   try {
+    // 1) Criar thread (se não veio)
     let threadId = thread_id;
-
-    // Etapa 1: Criar novo thread se não existir
     if (!threadId) {
-      console.log("Criando novo thread...");
-      const threadResponse = await fetch("https://api.openai.com/v1/threads", {
+      const threadResp = await fetch("https://api.openai.com/v1/threads", {
         method: "POST",
-        headers: {
-          "Authorization": "Bearer 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",
-          "OpenAI-Beta": "assistants=v2",
-          "Content-Type": "application/json"
-        }
+        headers: baseHeaders,
+        body: JSON.stringify({}),
       });
-
-      const threadData = await threadResponse.json();
+      const threadData = await threadResp.json();
+      if (!threadResp.ok) return res.status(500).json({ error: "Falha ao criar thread", detail: threadData });
       threadId = threadData.id;
-      console.log("Thread criado:", threadId);
     }
 
-    // Etapa 2: Enviar mensagem
-    console.log("Enviando mensagem para thread:", threadId);
-    await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+    // 2) Enviar mensagem do usuário
+    const msgResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
       method: "POST",
-      headers: {
-        "Authorization": "Bearer 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",
-        "OpenAI-Beta": "assistants=v2",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ role: "user", content: mensagem })
+      headers: baseHeaders,
+      body: JSON.stringify({ role: "user", content: mensagem }),
     });
+    if (!msgResp.ok) {
+      const d = await msgResp.json();
+      return res.status(500).json({ error: "Falha ao enviar mensagem", detail: d });
+    }
 
-    // Etapa 3: Iniciar run
-    console.log("Iniciando run...");
-    const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+    // 3) Iniciar run
+    const runResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
       method: "POST",
-      headers: {
-        "Authorization": "Bearer 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",
-        "OpenAI-Beta": "assistants=v2",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ assistant_id: "asst_KMIWalVC23wmVvldvpuOVEv9" })
+      headers: baseHeaders,
+      body: JSON.stringify({ assistant_id: assistantId }),
     });
+    const runData = await runResp.json();
+    if (!runResp.ok) return res.status(500).json({ error: "Falha ao iniciar run", detail: runData });
 
-    const runData = await runResponse.json();
-    console.log("Run iniciado:", runData.id);
-
-    // Etapa 4: Aguardar run concluir
-    let status = "queued";
-    console.log("Aguardando finalização do run...");
-    while (status !== "completed") {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const statusResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runData.id}`, {
-        headers: {
-          "Authorization": "Bearer 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",
-          "OpenAI-Beta": "assistants=v2"
-        }
-      });
-
-      const statusData = await statusResponse.json();
-      status = statusData.status;
-      console.log("Status atual:", status);
+    // 4) Aguardar run concluir
+    let status = runData.status || "queued";
+    let runId = runData.id;
+    while (status !== "completed" && status !== "failed" && status !== "expired" && status !== "cancelled") {
+      await new Promise(r => setTimeout(r, 1500));
+      const st = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, { headers: baseHeaders });
+      const stData = await st.json();
+      if (!st.ok) return res.status(500).json({ error: "Falha ao checar run", detail: stData });
+      status = stData.status;
     }
+    if (status !== "completed") return res.status(500).json({ error: `Run terminou com status ${status}` });
 
-    // Etapa 5: Obter resposta
-    console.log("Obtendo mensagens...");
-    const mensagensResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
-      headers: {
-        "Authorization": "Bearer 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",
-        "OpenAI-Beta": "assistants=v2"
-      }
-    });
+    // 5) Buscar resposta
+    const msgsResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, { headers: baseHeaders });
+    const msgsData = await msgsResp.json();
+    if (!msgsResp.ok) return res.status(500).json({ error: "Falha ao obter mensagens", detail: msgsData });
 
-    const mensagensData = await mensagensResponse.json();
-    const ultimaMensagem = mensagensData.data.find(msg => msg.role === "assistant");
+    const ultima = msgsData.data?.find(m => m.role === "assistant");
+    const texto = ultima?.content?.[0]?.text?.value || "Sem resposta gerada.";
 
-    if (!ultimaMensagem) {
-      console.log("Nenhuma resposta encontrada.");
-      return res.status(500).json({ resposta: "Sem resposta gerada." });
-    }
-
-    console.log("Resposta obtida:", ultimaMensagem.content[0].text.value);
-    return res.status(200).json({
-      resposta: ultimaMensagem.content[0].text.value,
-      thread_id: threadId
-    });
-
-  } catch (erro) {
-    console.error("Erro geral:", erro);
+    return res.status(200).json({ resposta: texto, thread_id: threadId, bot });
+  } catch (e) {
+    console.error("Erro geral:", e);
     return res.status(500).json({ error: "Erro interno ao processar a requisição." });
   }
 }
