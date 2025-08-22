@@ -3,6 +3,19 @@ const input = document.getElementById("pergunta");
 const respostaDiv = document.getElementById("resposta");
 let thread_id = null;
 
+// Detecta onde o front está hospedado
+const API_BASE = location.hostname.endsWith("github.io")
+  ? "https://maxwells-hub-pwa.vercel.app" // backend na Vercel
+  : ""; // se o front também estiver na Vercel, caminhos relativos funcionam
+
+// Qual bot usar (pega da URL ?bot=LUCAS ou cai no LUCAS)
+const BOT = (new URLSearchParams(location.search).get("bot") || "LUCAS")
+  .toUpperCase()
+  .replace(/[^A-Z0-9_]/g, "");
+
+const withBot = (path) =>
+  `${API_BASE}${path}${path.includes("?") ? "&" : "?"}bot=${encodeURIComponent(BOT)}`;
+
 // Saudação inicial
 window.onload = () => {
   adicionarMensagem(
@@ -27,18 +40,32 @@ form.addEventListener("submit", async (e) => {
   respostaDiv.scrollTop = respostaDiv.scrollHeight;
 
   try {
-    const resposta = await fetch("https://maxwells-hub-pwa.vercel.app/", {
+    // 🔧 Chame sua função serverless unificada
+    // Se o seu backend usa start-run/check-run separados, troque para '/proxy/start-run' e depois faça o polling em '/proxy/check-run'
+    const resp = await fetch(withBot("/proxy/index"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mensagem: pergunta, thread_id }),
+      body: JSON.stringify({ mensagem: pergunta, thread_id })
     });
 
-    const data = await resposta.json();
-    thread_id = data.thread_id;
+    // Debug útil no console
+    console.log("Request URL:", resp.url, "Status:", resp.status);
+
+    const data = await resp.json().catch(() => ({}));
     respostaDiv.removeChild(digitando);
+
+    if (!resp.ok) {
+      console.error("Erro backend:", data);
+      adicionarMensagem("Erro", data?.error || "Erro ao processar a solicitação.", "erro");
+      return;
+    }
+
+    thread_id = data.thread_id || thread_id;
 
     if (data.resposta) {
       adicionarMensagem("Lucas", transformarLinksEmCliqueAqui(data.resposta), "bot");
+    } else if (data.status && data.status !== "completed") {
+      adicionarMensagem("Lucas", `Status: ${data.status}. Tente novamente em instantes.`, "bot");
     } else {
       adicionarMensagem("Erro", "Não houve resposta do assistente.", "erro");
     }
@@ -69,19 +96,15 @@ function adicionarMensagem(remetente, mensagem, tipo) {
 }
 
 function transformarLinksEmCliqueAqui(texto) {
-  // 🔧 Corrige \[Texto\]\(link\) => [Texto](link)
+  // Corrige escape Markdown vindo do backend
   texto = texto.replace(/\\([\[\]\(\)])/g, "$1");
-
-  // 🔄 Markdown [Texto](https://...) → <a href="..." target="_blank">Texto</a>
-  texto = texto.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (match, textoLink, url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${textoLink}</a>`;
-  });
-
-  // 🔄 URLs soltas → <a href="..." target="_blank">Clique aqui</a>
-  texto = texto.replace(/(?<!href=")(https?:\/\/[^\s]+)/g, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer">Clique aqui</a>`;
-  });
-
-  // 🔄 Quebras de linha
+  // [Texto](https://...) → link clicável
+  texto = texto.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, url) =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${t}</a>`
+  );
+  // URLs soltas → "Clique aqui"
+  texto = texto.replace(/(?<!href=")(https?:\/\/[^\s]+)/g, (url) =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">Clique aqui</a>`
+  );
   return texto.replace(/\n/g, "<br>");
 }
