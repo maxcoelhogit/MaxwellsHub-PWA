@@ -7,7 +7,7 @@ let thread_id = null;
 window.onload = () => {
   adicionarMensagem(
     "MaxBot",
-    transformarLinksEmCliqueAqui("👋 Olá! Sou o MaxBot, o assistente virtual do seu condomínio. Estou aqui para te ajudar com dúvidas, notificações, documentos, regras internas e muito mais. Digite sua mensagem abaixo e veja como posso ajudar. 😊"),
+    transformarLinksEmCliqueAqui("👋 Olá! Sou o Lucas, assistende do MaxwellsHub. Estou aqui para te ajudar com dúvidas e muito mais. Digite sua mensagem abaixo e veja como posso ajudar. 😊"),
     "bot"
   );
 };
@@ -22,12 +22,12 @@ form.addEventListener("submit", async (e) => {
 
   const digitando = document.createElement("div");
   digitando.classList.add("mensagem-bot");
-  digitando.textContent = "MaxBot está digitando...";
+  digitando.textContent = "Lucas está digitando...";
   respostaDiv.appendChild(digitando);
   respostaDiv.scrollTop = respostaDiv.scrollHeight;
 
   try {
-    const resposta = await fetch("https://maxbot-gamma.vercel.app/api/chat", {
+    const resposta = await fetch("https://maxwells-hub-pwa.vercel.app/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mensagem: pergunta, thread_id }),
