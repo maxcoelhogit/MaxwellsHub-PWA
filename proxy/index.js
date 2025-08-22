@@ -26,7 +26,7 @@ export default async function handler(req, res) {
       const threadResponse = await fetch("https://api.openai.com/v1/threads", {
         method: "POST",
         headers: {
-          "Authorization": "Bearer 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",
+          "Authorization": "Bearer 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",
           "OpenAI-Beta": "assistants=v2",
           "Content-Type": "application/json"
         }
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer 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",
+        "Authorization": "Bearer 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",
         "OpenAI-Beta": "assistants=v2",
         "Content-Type": "application/json"
       },
@@ -54,11 +54,11 @@ export default async function handler(req, res) {
     const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer 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",
+        "Authorization": "Bearer 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",
         "OpenAI-Beta": "assistants=v2",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ assistant_id: "asst_dk7R5Q7jPZSSB1imMz2NtfTY" })
+      body: JSON.stringify({ assistant_id: "asst_KMIWalVC23wmVvldvpuOVEv9" })
     });
 
     const runData = await runResponse.json();
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
 
       const statusResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runData.id}`, {
         headers: {
-          "Authorization": "Bearer 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",
+          "Authorization": "Bearer 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",
           "OpenAI-Beta": "assistants=v2"
         }
       });
@@ -86,7 +86,7 @@ export default async function handler(req, res) {
     console.log("Obtendo mensagens...");
     const mensagensResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
       headers: {
-        "Authorization": "Bearer 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",
+        "Authorization": "Bearer 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",
         "OpenAI-Beta": "assistants=v2"
       }
     });
