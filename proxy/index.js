@@ -1,90 +1,108 @@
-// /proxy/index.js  (handler POST)
 export default async function handler(req, res) {
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Método não permitido" });
 
-  const { mensagem, thread_id } = req.body || {};
-  if (!mensagem) return res.status(400).json({ error: "Mensagem não fornecida" });
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY não configurada no ambiente" });
-
-  // Suporte a múltiplos assistentes via ?bot=IMOVEIS, ?bot=CONDOVALE, etc.
-  const bot = (req.query?.bot || "DEFAULT").toUpperCase().replace(/[^A-Z0-9_]/g, "");
-  const assistantEnvKey = `ASSISTANT_ID_${bot}`;
-  const assistantId = process.env[assistantEnvKey] || process.env.ASSISTANT_ID_DEFAULT;
-
-  if (!assistantId) {
-    return res.status(500).json({ error: `Assistant ID não definido (checado: ${assistantEnvKey} e ASSISTANT_ID_DEFAULT)` });
-  }
-
-  const baseHeaders = {
-    "Authorization": `Bearer ${apiKey}`,
-    "OpenAI-Beta": "assistants=v2",
-    "Content-Type": "application/json",
-  };
-
   try {
-    // 1) Criar thread (se não veio)
-    let threadId = thread_id;
+    const { mensagem, thread_id: recebidoThreadId } = req.body || {};
+    if (!mensagem || typeof mensagem !== "string") {
+      return res.status(400).json({ error: "Mensagem ausente ou inválida" });
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY não configurada no ambiente" });
+
+    // Resolve o assistente por ?bot=IMOVEIS / ?bot=LUCAS ... ou default
+    const bot = getBotKey(req);
+    const assistantEnvKey = `ASSISTANT_ID_${bot}`;
+    const assistantId = process.env[assistantEnvKey] || process.env.ASSISTANT_ID_DEFAULT;
+    if (!assistantId) {
+      return res.status(500).json({ error: `Assistant ID não definido (${assistantEnvKey} / ASSISTANT_ID_DEFAULT)` });
+    }
+
+    const baseHeaders = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "OpenAI-Beta": "assistants=v2",
+    };
+
+    // 1) Criar thread se necessário
+    let threadId = recebidoThreadId;
     if (!threadId) {
-      const threadResp = await fetch("https://api.openai.com/v1/threads", {
+      const novaThread = await fetch("https://api.openai.com/v1/threads", {
         method: "POST",
         headers: baseHeaders,
         body: JSON.stringify({}),
       });
-      const threadData = await threadResp.json();
-      if (!threadResp.ok) return res.status(500).json({ error: "Falha ao criar thread", detail: threadData });
-      threadId = threadData.id;
+      const novaThreadData = await novaThread.json();
+      if (!novaThread.ok) return res.status(500).json({ error: "Falha ao criar thread", detail: novaThreadData });
+      threadId = novaThreadData.id;
     }
 
     // 2) Enviar mensagem do usuário
-    const msgResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+    const addMsg = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
       method: "POST",
       headers: baseHeaders,
       body: JSON.stringify({ role: "user", content: mensagem }),
     });
-    if (!msgResp.ok) {
-      const d = await msgResp.json();
+    if (!addMsg.ok) {
+      const d = await addMsg.json();
       return res.status(500).json({ error: "Falha ao enviar mensagem", detail: d });
     }
 
     // 3) Iniciar run
-    const runResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+    const runRes = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
       method: "POST",
       headers: baseHeaders,
       body: JSON.stringify({ assistant_id: assistantId }),
     });
-    const runData = await runResp.json();
-    if (!runResp.ok) return res.status(500).json({ error: "Falha ao iniciar run", detail: runData });
+    const runData = await runRes.json();
+    if (!runRes.ok) return res.status(500).json({ error: "Falha ao iniciar run", detail: runData });
 
-    // 4) Aguardar run concluir
+    // 4) Aguardar conclusão (até 20 tentativas)
+    const runId = runData.id;
     let status = runData.status || "queued";
-    let runId = runData.id;
-    while (status !== "completed" && status !== "failed" && status !== "expired" && status !== "cancelled") {
+    let attempts = 0;
+
+    while (!["completed", "failed", "expired", "cancelled"].includes(status) && attempts < 20) {
       await new Promise(r => setTimeout(r, 1500));
       const st = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, { headers: baseHeaders });
       const stData = await st.json();
-      if (!st.ok) return res.status(500).json({ error: "Falha ao checar run", detail: stData });
+      if (!st.ok) return res.status(500).json({ error: "Falha ao checar status do run", detail: stData });
       status = stData.status;
+      attempts++;
     }
-    if (status !== "completed") return res.status(500).json({ error: `Run terminou com status ${status}` });
 
-    // 5) Buscar resposta
-    const msgsResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, { headers: baseHeaders });
-    const msgsData = await msgsResp.json();
-    if (!msgsResp.ok) return res.status(500).json({ error: "Falha ao obter mensagens", detail: msgsData });
+    if (status !== "completed") {
+      // Retorna parcial para o front fazer polling em /proxy/check-run
+      return res.status(200).json({ status, thread_id: threadId, run_id: runId, bot });
+    }
 
-    const ultima = msgsData.data?.find(m => m.role === "assistant");
-    const texto = ultima?.content?.[0]?.text?.value || "Sem resposta gerada.";
+    // 5) Buscar resposta final
+    const respostaRes = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, { headers: baseHeaders });
+    const respostaData = await respostaRes.json();
+    if (!respostaRes.ok) return res.status(500).json({ error: "Falha ao obter mensagens", detail: respostaData });
 
-    return res.status(200).json({ resposta: texto, thread_id: threadId, bot });
-  } catch (e) {
-    console.error("Erro geral:", e);
-    return res.status(500).json({ error: "Erro interno ao processar a requisição." });
+    const ultima = respostaData.data?.find(m => m.role === "assistant");
+    let resposta = ultima?.content?.[0]?.text?.value || "Sem resposta.";
+
+    // Limpa eventuais citações no formato 【x:y†...】
+    resposta = resposta.replace(/【\d+:\d+†[^】]+】/g, "").trim();
+
+    return res.status(200).json({ status: "completed", resposta, thread_id: threadId, run_id: runId, bot });
+  } catch (erro) {
+    console.error("❌ Erro no backend /proxy/index:", erro);
+    return res.status(500).json({ erro: "Erro interno no servidor" });
   }
+}
+
+function getBotKey(req) {
+  const q = (req.query?.bot || "").toString();
+  const b = (req.body?.bot || "").toString();
+  const h = (req.headers["x-bot"] || "").toString();
+  const raw = q || b || h || "DEFAULT";
+  return raw.toUpperCase().replace(/[^A-Z0-9_]/g, "");
 }
